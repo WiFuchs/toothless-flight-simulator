@@ -30,7 +30,7 @@ bool firstMouse = true;
 
 bool wireframe = false;
 bool nightMode = false;
-glm::vec3 sunClear = glm::vec3(1.0f, 0.894f, 0.859f);
+glm::vec3 sunClear = glm::vec3(1.0f, 0.99f, 0.96f);//glm::vec3(1.0f, 0.894f, 0.859f);
 glm::vec3 nightClear = glm::vec3(0.098f, 0.098f, 0.4392f);
 int timeout = 10;
 
@@ -49,10 +49,6 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this statement to fix compilation on OS X
-#endif
     
     // glfw window creation
     // --------------------
@@ -67,6 +63,9 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
+
+    glfwSwapInterval(1);
+
 
     // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -85,15 +84,15 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader modelShader("../resources/animate.vert", "../resources/animate.frag");
-    Shader terrainShader("../resources/terrain.vert", "../resources/terrain.frag");
-    Shader stillModelShader("../resources/still.vert", "../resources/still.frag");
-    Shader fboQuadShader("../resources/fbo.vert", "../resources/fbo.frag");
+    Shader modelShader("./resources/animate.vert", "./resources/animate.frag");
+    Shader terrainShader("./resources/terrain.vert", "./resources/terrain.frag");
+    Shader stillModelShader("./resources/still.vert", "./resources/still.frag");
+    Shader fboQuadShader("./resources/fbo.vert", "./resources/fbo.frag");
     
-    Terrain ground("../resources/terrain/testtopo.png");
+    Terrain ground("./resources/terrain/testtopo.png");
 
     // load models
-    Model ourModel("../resources/models/toothlessGLTF/scene.gltf", false, true);
+    Model ourModel("./resources/models/toothlessGLTF/scene.gltf", false, true);
     models.push_back(&ourModel);
     ourModel.position = glm::vec3(0.0f, -0.5f, -3.0f);
 
@@ -153,12 +152,7 @@ int main()
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        if (wireframe) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        }
-        else {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         
         // per-frame time logic
         // --------------------
@@ -249,11 +243,6 @@ void processInput(GLFWwindow *window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        wireframe = true;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_RELEASE)
-        wireframe = false;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
