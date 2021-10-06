@@ -46,8 +46,8 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     
     // glfw window creation
@@ -66,9 +66,8 @@ int main()
 
     glfwSwapInterval(1);
 
-
     // tell GLFW to capture our mouse
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // glad: load all OpenGL function pointers
     // ---------------------------------------
@@ -77,6 +76,8 @@ int main()
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+
+    cout << glGetString(GL_VERSION) << endl;
 
     // configure global opengl state
     // -----------------------------
@@ -118,20 +119,63 @@ int main()
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     
-    // render to framebuffer for fog effect
+
+    GLuint Tex1Location = glGetUniformLocation(fboQuadShader.ID, "colTex");//tex, tex2... sampler in the fragment shader
+    GLuint Tex2Location = glGetUniformLocation(fboQuadShader.ID, "posTex");
+    GLuint Tex3Location = glGetUniformLocation(fboQuadShader.ID, "norTex");
+    GLuint Tex4Location = glGetUniformLocation(fboQuadShader.ID, "matTex");
+    GLuint Tex5Location = glGetUniformLocation(fboQuadShader.ID, "depthTexture");
+    // Then bind the uniform samplers to texture units:
+    glUseProgram(fboQuadShader.ID);
+    glUniform1i(Tex1Location, 0);
+    glUniform1i(Tex2Location, 1);
+    glUniform1i(Tex3Location, 2);
+    glUniform1i(Tex4Location, 3);
+    glUniform1i(Tex5Location, 4);
+
+
+    // render to framebuffer for deferred shading
     int framebufferHeight, framebufferWidth;
     glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
     unsigned int framebuffer;
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    // create a color attachment texture
-    unsigned int textureColorbuffer;
-    glGenTextures(1, &textureColorbuffer);
-    glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, framebufferWidth, framebufferHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    // create a color texture
+    unsigned int texColBuffer;
+    glGenTextures(1, &texColBuffer);
+    glBindTexture(GL_TEXTURE_2D, texColBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColBuffer, 0);
+
+    // create a position texture
+    unsigned int texPosBuffer;
+    glGenTextures(1, &texPosBuffer);
+    glBindTexture(GL_TEXTURE_2D, texPosBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, texPosBuffer, 0);
+
+    // create a normal texture
+    unsigned int texNorBuffer;
+    glGenTextures(1, &texNorBuffer);
+    glBindTexture(GL_TEXTURE_2D, texNorBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, texNorBuffer, 0);
+
+    // create a material texture
+    unsigned int texMatBuffer;
+    glGenTextures(1, &texMatBuffer);
+    glBindTexture(GL_TEXTURE_2D, texMatBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, texMatBuffer, 0);
+
     unsigned int textureDepthbuffer;
     glGenTextures(1, &textureDepthbuffer);
     glBindTexture(GL_TEXTURE_2D, textureDepthbuffer);
@@ -178,8 +222,11 @@ int main()
 
         // render to FBO
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
+        glDrawBuffers(4, buffers);
         glEnable(GL_DEPTH_TEST);
         
+        //******************************************************************
         if (nightMode) {
             glClearColor(nightClear.x, nightClear.y, nightClear.z, 1.0);
         } else {
@@ -189,21 +236,19 @@ int main()
         
         // draw the ground
         terrainShader.use();
-        terrainShader.setVec3("lightDir", glm::normalize(glm::vec3(sunX, 5, 1)));
         terrainShader.setMat4("projection", projection);
         terrainShader.setMat4("view", view);
         ground.Draw(terrainShader);
         
         modelShader.use();
-        // set lighting
-        modelShader.setVec3("lightColor", glm::normalize(glm::vec3(1, 1, 1)));
-        modelShader.setVec3("lightDir", glm::normalize(glm::vec3(sunX, 5, 1)));
         // view/projection transformations
         modelShader.setMat4("projection", projection);
         modelShader.setMat4("view", view);
         // render the loaded model
         ourModel.Draw(modelShader, currentFrame);
-        
+
+        //*******************************************************************
+
         // render framebuffer to quad
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_DEPTH_TEST); // disable depth test so screen-space quad isn't discarded due to depth test.
@@ -215,14 +260,19 @@ int main()
         glBindVertexArray(quadVAO);
         
         fboQuadShader.setVec3("skyColor", nightMode ? nightClear : sunClear);
-        
+        fboQuadShader.setVec3("campos", camera.Position);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
-        glUniform1i(glGetUniformLocation(fboQuadShader.ID, "screenTexture"),0);
-        
+        glBindTexture(GL_TEXTURE_2D, texColBuffer);
         glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texPosBuffer);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, texNorBuffer);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, texMatBuffer);
+        //glUniform1i(glGetUniformLocation(fboQuadShader.ID, "screenTexture"),0);
+        
+        glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, textureDepthbuffer);
-        glUniform1i(glGetUniformLocation(fboQuadShader.ID, "depthTexture"), 1);
         
         glDrawArrays(GL_TRIANGLES, 0, 6);
 

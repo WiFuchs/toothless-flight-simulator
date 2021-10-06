@@ -8,8 +8,8 @@ layout (location = 5) in ivec4 aBoneIds;
 layout (location = 6) in vec4 aBoneWeights;
 
 out vec2 TexCoords;
-out vec3 ViewDir;
 out mat3 TBN;
+out vec3 WorldPos;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -37,5 +37,5 @@ void main()
     
     TexCoords = aTexCoords;
     gl_Position = projection * view * mTrans * vec4(aPos, 1.0);
-    ViewDir = vec3(0, 0, 6) - (mTrans * vec4(aPos.xyz, 0.0)).xyz;
+    WorldPos = (mTrans * vec4(aPos, 1.0)).xyz;
 }

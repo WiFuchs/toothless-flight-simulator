@@ -6,8 +6,10 @@ uniform mat4 model;
 uniform mat4 view;
 
 flat out vec3 fragNor;
+out vec3 WorldPos;
 
 void main() {
+    WorldPos = (model * vec4(vertPos.xyz, 1.0)).xyz;
     gl_Position = projection * view * model * vec4(vertPos.xyz, 1.0);
     fragNor = (model * vec4(vertNor, 0.0)).xyz;
 }
