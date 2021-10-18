@@ -135,6 +135,9 @@
     <None Include="resources\fbo.frag" />
     <None Include="resources\fbo.vert" />
     <None Include="resources\models\toothlessgltf\scene.bin" />
+    <None Include="resources\shadow.frag" />
+    <None Include="resources\shadow.vert" />
+    <None Include="resources\shadow_animate.vert" />
     <None Include="resources\still.frag" />
     <None Include="resources\still.vert" />
     <None Include="resources\terrain.frag" />

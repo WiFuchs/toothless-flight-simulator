@@ -9,6 +9,7 @@ layout (location = 6) in vec4 aBoneWeights;
 
 out vec2 TexCoords;
 out vec3 FragNor;
+out vec3 WorldPos;
 
 uniform mat4 projection;
 uniform mat4 model;
@@ -18,4 +19,5 @@ void main() {
     gl_Position = projection * view * model * vec4(aPos.xyz, 1.0);
     FragNor = (model * vec4(aPos, 0.0)).xyz;
     TexCoords = aTexCoords;
+    WorldPos = (model * vec4(aPos, 1.0)).xyz;
 }

@@ -21,5 +21,5 @@ void main()
     color_out = vec4(texture(texture_diffuse1, TexCoords).rgb, 1.0);
     pos_out = vec4(WorldPos, 1.0);
     norm_out = vec4(fragNor, 1.0);
-    mat_out = vec4(1.0, 1.0, 0, 0);
+    mat_out = vec4(0.0, 100.0, 0, 0);
 }

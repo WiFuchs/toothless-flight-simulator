@@ -147,6 +147,15 @@ public:
     
     // draw an unanimated model
     void DrawStill(Shader shader) {
+        // create rotation matrix
+        glm::mat4 rotation = glm::mat4(direction.x, direction.y, direction.z, 0,
+            right.x, right.y, right.z, 0,
+            up.x, up.y, up.z, 0,
+            0, 0, 0, 1);
+        model = glm::translate(glm::mat4(1.0f), position);
+        model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        model *= glm::rotate(glm::mat4(1.0f), glm::radians(roll), -direction);
+        model *= rotation;
         shader.setMat4("model", model);
         for(unsigned int i = 0; i < meshes.size(); i++){
            meshes[i].Draw(shader, nullptr);

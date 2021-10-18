@@ -8,19 +8,10 @@ flat in vec3 fragNor;
 in vec3 WorldPos;
 
 void main() {
-    //vec3 normal = normalize(fragNor);
-    //vec3 light = normalize(lightDir);
-    //vec3 color = vec3(0.05, 0.5, 0.2);
-    //diffuse
-    //vec3 col = color * max(0, dot(normal, light));
-    //ambient
-    //col += color * 0.15;
-    //Outcolor = vec4(col, 1.0);
-
     color_out = vec4(0.05, 0.5, 0.2, 1.0);
     pos_out = vec4(WorldPos, 1.0);
     norm_out = vec4(normalize(fragNor), 1.0);
-    mat_out = vec4(1.0, 0, 0.15, 0);
+    mat_out = vec4(1.0, 100.0, 0.15, 0);
 }
 
 
