@@ -123,7 +123,7 @@ public:
     }
 
     // draws the (animated) model, and thus all its meshes
-    void Draw(Shader shader, double time)
+    void Draw(Shader *shader, double time)
     {
         
         // create rotation matrix
@@ -138,7 +138,7 @@ public:
         
         accumulateTransforms(boneRoot, glm::mat4(1.0f), inverseBindTransform, fmod(time * animTicks*10, animDuration));
         
-        shader.setMat4("model", model);
+        shader->setMat4("model", model);
         
         for(unsigned int i = 0; i < meshes.size(); i++){
             meshes[i].Draw(shader, &animationTransforms);
@@ -146,8 +146,8 @@ public:
     }
     
     // draw an unanimated model
-    void DrawStill(Shader shader) {
-        shader.setMat4("model", model);
+    void DrawStill(Shader *shader) {
+        shader->setMat4("model", model);
         for(unsigned int i = 0; i < meshes.size(); i++){
            meshes[i].Draw(shader, nullptr);
         }

@@ -141,7 +141,7 @@ public:
     }
 
     // render the mesh
-    void Draw(Shader shader, std::array<glm::mat4, 110> *animationTransforms)
+    void Draw(Shader *shader, std::array<glm::mat4, 110> *animationTransforms)
     {
         // bind appropriate textures
         unsigned int diffuseNr  = 1;
@@ -164,7 +164,7 @@ public:
                 number = std::to_string(heightNr++); // transfer unsigned int to stream
 
             // now set the sampler to the correct texture unit
-            glUniform1i(glGetUniformLocation(shader.ID, (name + number).c_str()), i);
+            glUniform1i(glGetUniformLocation(shader->ID, (name + number).c_str()), i);
             // and finally bind the texture
             glBindTexture(GL_TEXTURE_2D, textures[i].id);
             
@@ -177,7 +177,7 @@ public:
         
         if (animationTransforms) {
             // bind animation buffer
-            glUniformBlockBinding(shader.ID, glGetUniformBlockIndex(shader.ID, "AnimationBlock"), 0);
+            glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "AnimationBlock"), 0);
             glBindBuffer(GL_UNIFORM_BUFFER, ABO);
             glBufferSubData(GL_UNIFORM_BUFFER, 0, MAX_BONES * sizeof(glm::mat4), animationTransforms);
             glBindBuffer(GL_UNIFORM_BUFFER, 0);

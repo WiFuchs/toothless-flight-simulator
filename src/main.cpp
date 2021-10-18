@@ -41,18 +41,235 @@ float lastFrame = 0.0f;
 float sunX = 0.0f;
 float debugTime = 0.0f;
 
+
+class Application
+{
+public:
+    GLFWwindow* window = nullptr;
+    Model* toothless = nullptr;
+    GLuint fb_screen;
+    Shader* terrainShader, *modelShader, *fboQuadShader;
+    Terrain *ground;
+    glm::mat4 projection, view;
+    float currentFrame;
+    GLuint texColBuffer, texPosBuffer, texNorBuffer, texMatBuffer, texDepthbuffer;
+    GLuint quadVAO, quadVBO;
+    int framebufferHeight, framebufferWidth;
+
+    int init()
+    {
+
+        // glad: load all OpenGL function pointers
+        // ---------------------------------------
+        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+        {
+            std::cout << "Failed to initialize GLAD" << std::endl;
+            return -1;
+        }
+
+        cout << glGetString(GL_VERSION) << endl;
+
+        // configure global opengl state
+        // -----------------------------
+        glEnable(GL_DEPTH_TEST);
+
+        // build and compile shaders
+        // -------------------------
+        modelShader = new Shader("./resources/animate.vert", "./resources/animate.frag");
+        terrainShader = new Shader("./resources/terrain.vert", "./resources/terrain.frag");
+        //Shader stillModelShader("./resources/still.vert", "./resources/still.frag");
+        fboQuadShader = new Shader("./resources/fbo.vert", "./resources/fbo.frag");
+
+        ground = new Terrain("./resources/terrain/testtopo.png");
+
+        // load models
+        toothless = new Model("./resources/models/toothlessGLTF/scene.gltf", false, true);
+        models.push_back(toothless);
+        toothless->position = glm::vec3(0.0f, -0.5f, -3.0f);
+
+        // quad for framebuffer
+        float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+            // positions   // texCoords
+            -1.0f,  1.0f,  0.0f, 1.0f,
+            -1.0f, -1.0f,  0.0f, 0.0f,
+             1.0f, -1.0f,  1.0f, 0.0f,
+
+            -1.0f,  1.0f,  0.0f, 1.0f,
+             1.0f, -1.0f,  1.0f, 0.0f,
+             1.0f,  1.0f,  1.0f, 1.0f
+        };
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+
+        GLuint Tex1Location = glGetUniformLocation(fboQuadShader->ID, "colTex");//tex, tex2... sampler in the fragment shader
+        GLuint Tex2Location = glGetUniformLocation(fboQuadShader->ID, "posTex");
+        GLuint Tex3Location = glGetUniformLocation(fboQuadShader->ID, "norTex");
+        GLuint Tex4Location = glGetUniformLocation(fboQuadShader->ID, "matTex");
+        GLuint Tex5Location = glGetUniformLocation(fboQuadShader->ID, "depthTexture");
+        // Then bind the uniform samplers to texture units:
+        glUseProgram(fboQuadShader->ID);
+        glUniform1i(Tex1Location, 0);
+        glUniform1i(Tex2Location, 1);
+        glUniform1i(Tex3Location, 2);
+        glUniform1i(Tex4Location, 3);
+        glUniform1i(Tex5Location, 4);
+
+
+        // render to framebuffer for deferred shading
+        glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+        glGenFramebuffers(1, &fb_screen);
+        glBindFramebuffer(GL_FRAMEBUFFER, fb_screen);
+        // create a color texture
+        glGenTextures(1, &texColBuffer);
+        glBindTexture(GL_TEXTURE_2D, texColBuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColBuffer, 0);
+
+        // create a position texture
+        glGenTextures(1, &texPosBuffer);
+        glBindTexture(GL_TEXTURE_2D, texPosBuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, texPosBuffer, 0);
+
+        // create a normal texture
+        glGenTextures(1, &texNorBuffer);
+        glBindTexture(GL_TEXTURE_2D, texNorBuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, texNorBuffer, 0);
+
+        // create a material texture
+        glGenTextures(1, &texMatBuffer);
+        glBindTexture(GL_TEXTURE_2D, texMatBuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, texMatBuffer, 0);
+
+        glGenTextures(1, &texDepthbuffer);
+        glBindTexture(GL_TEXTURE_2D, texDepthbuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, framebufferWidth, framebufferHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, texDepthbuffer, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void setup_render()
+    {
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+        // per-frame time logic
+        // --------------------
+        currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        // input
+        // -----
+        timeout--;
+        processInput(window);
+
+        toothless->debugTime = debugTime;
+        toothless->updatePosition(deltaTime);
+
+        camera.TrackModel(toothless->position, toothless->direction);
+
+        projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 v = camera.GetViewMatrix();
+        view = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), toothless->direction);
+        view *= v;
+    }
+
+    void render_to_texture()
+    {
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
+        glBindFramebuffer(GL_FRAMEBUFFER, fb_screen);
+        GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+        glDrawBuffers(4, buffers);
+        glEnable(GL_DEPTH_TEST);
+
+        //******************************************************************
+        if (nightMode) {
+            glClearColor(nightClear.x, nightClear.y, nightClear.z, 1.0);
+        }
+        else {
+            glClearColor(sunClear.x, sunClear.y, sunClear.z, 1.0);
+        }
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // draw the ground
+        terrainShader->use();
+        terrainShader->setMat4("projection", projection);
+        terrainShader->setMat4("view", view);
+        ground->Draw(terrainShader);
+
+        modelShader->use();
+        // view/projection transformations
+        modelShader->setMat4("projection", projection);
+        modelShader->setMat4("view", view);
+        // render the loaded model
+        toothless->Draw(modelShader, currentFrame);
+    }
+
+    void render_to_screen()
+    {
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_TEST); // disable depth test so screen-space quad isn't discarded due to depth test.
+        // clear all relevant buffers
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // set clear color to white (not really necessery actually, since we won't be able to see behind the quad anyways)
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        fboQuadShader->use();
+        glBindVertexArray(quadVAO);
+
+        fboQuadShader->setVec3("skyColor", nightMode ? nightClear : sunClear);
+        fboQuadShader->setVec3("campos", camera.Position);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texColBuffer);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texPosBuffer);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, texNorBuffer);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, texMatBuffer);
+
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, texDepthbuffer);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+};
+
+
 int main()
 {
-    // glfw: initialize and configure
-    // ------------------------------
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Hello, World!", NULL, NULL);
+    if (!glfwInit()) {
+        return -1;
+    }
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "Hello, World!", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -64,220 +281,28 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    glfwSwapInterval(1);
-
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    
     // tell GLFW to capture our mouse
     //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
-        std::cout << "Failed to initialize GLAD" << std::endl;
-        return -1;
-    }
-
-    cout << glGetString(GL_VERSION) << endl;
-
-    // configure global opengl state
-    // -----------------------------
-    glEnable(GL_DEPTH_TEST);
-
-    // build and compile shaders
-    // -------------------------
-    Shader modelShader("./resources/animate.vert", "./resources/animate.frag");
-    Shader terrainShader("./resources/terrain.vert", "./resources/terrain.frag");
-    Shader stillModelShader("./resources/still.vert", "./resources/still.frag");
-    Shader fboQuadShader("./resources/fbo.vert", "./resources/fbo.frag");
-    
-    Terrain ground("./resources/terrain/testtopo.png");
-
-    // load models
-    Model ourModel("./resources/models/toothlessGLTF/scene.gltf", false, true);
-    models.push_back(&ourModel);
-    ourModel.position = glm::vec3(0.0f, -0.5f, -3.0f);
-
-    // quad for framebuffer
-    float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
-        // positions   // texCoords
-        -1.0f,  1.0f,  0.0f, 1.0f,
-        -1.0f, -1.0f,  0.0f, 0.0f,
-         1.0f, -1.0f,  1.0f, 0.0f,
-
-        -1.0f,  1.0f,  0.0f, 1.0f,
-         1.0f, -1.0f,  1.0f, 0.0f,
-         1.0f,  1.0f,  1.0f, 1.0f
-    };
-    unsigned int quadVAO, quadVBO;
-    glGenVertexArrays(1, &quadVAO);
-    glGenBuffers(1, &quadVBO);
-    glBindVertexArray(quadVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    
-
-    GLuint Tex1Location = glGetUniformLocation(fboQuadShader.ID, "colTex");//tex, tex2... sampler in the fragment shader
-    GLuint Tex2Location = glGetUniformLocation(fboQuadShader.ID, "posTex");
-    GLuint Tex3Location = glGetUniformLocation(fboQuadShader.ID, "norTex");
-    GLuint Tex4Location = glGetUniformLocation(fboQuadShader.ID, "matTex");
-    GLuint Tex5Location = glGetUniformLocation(fboQuadShader.ID, "depthTexture");
-    // Then bind the uniform samplers to texture units:
-    glUseProgram(fboQuadShader.ID);
-    glUniform1i(Tex1Location, 0);
-    glUniform1i(Tex2Location, 1);
-    glUniform1i(Tex3Location, 2);
-    glUniform1i(Tex4Location, 3);
-    glUniform1i(Tex5Location, 4);
+    glfwSwapInterval(1);
 
 
-    // render to framebuffer for deferred shading
-    int framebufferHeight, framebufferWidth;
-    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
-    unsigned int framebuffer;
-    glGenFramebuffers(1, &framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    // create a color texture
-    unsigned int texColBuffer;
-    glGenTextures(1, &texColBuffer);
-    glBindTexture(GL_TEXTURE_2D, texColBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColBuffer, 0);
-
-    // create a position texture
-    unsigned int texPosBuffer;
-    glGenTextures(1, &texPosBuffer);
-    glBindTexture(GL_TEXTURE_2D, texPosBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, texPosBuffer, 0);
-
-    // create a normal texture
-    unsigned int texNorBuffer;
-    glGenTextures(1, &texNorBuffer);
-    glBindTexture(GL_TEXTURE_2D, texNorBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, texNorBuffer, 0);
-
-    // create a material texture
-    unsigned int texMatBuffer;
-    glGenTextures(1, &texMatBuffer);
-    glBindTexture(GL_TEXTURE_2D, texMatBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, framebufferWidth, framebufferHeight, 0, GL_RGBA, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, texMatBuffer, 0);
-
-    unsigned int textureDepthbuffer;
-    glGenTextures(1, &textureDepthbuffer);
-    glBindTexture(GL_TEXTURE_2D, textureDepthbuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0,GL_DEPTH_COMPONENT32F, framebufferWidth, framebufferHeight, 0,GL_DEPTH_COMPONENT, GL_FLOAT, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textureDepthbuffer, 0);
-    
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
-    glViewport(0, 0, framebufferWidth, framebufferHeight);
-    
+    Application* app = new Application();
+    app->window = window;
+    app->init();
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        
-        // per-frame time logic
-        // --------------------
-        float currentFrame = glfwGetTime();
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
-
-        // input
-        // -----
-        timeout--;
-        processInput(window);
-        
-        ourModel.debugTime = debugTime;
-        ourModel.updatePosition(deltaTime);
-        
-        camera.TrackModel(ourModel.position, ourModel.direction);
-        
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 v = camera.GetViewMatrix();
-        glm::mat4 view = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), ourModel.direction);
-        view *= v;
-        
-
-        // render to FBO
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-        GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
-        glDrawBuffers(4, buffers);
-        glEnable(GL_DEPTH_TEST);
-        
-        //******************************************************************
-        if (nightMode) {
-            glClearColor(nightClear.x, nightClear.y, nightClear.z, 1.0);
-        } else {
-            glClearColor(sunClear.x, sunClear.y, sunClear.z, 1.0);
-        }
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
-        // draw the ground
-        terrainShader.use();
-        terrainShader.setMat4("projection", projection);
-        terrainShader.setMat4("view", view);
-        ground.Draw(terrainShader);
-        
-        modelShader.use();
-        // view/projection transformations
-        modelShader.setMat4("projection", projection);
-        modelShader.setMat4("view", view);
-        // render the loaded model
-        ourModel.Draw(modelShader, currentFrame);
-
-        //*******************************************************************
-
-        // render framebuffer to quad
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDisable(GL_DEPTH_TEST); // disable depth test so screen-space quad isn't discarded due to depth test.
-        // clear all relevant buffers
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // set clear color to white (not really necessery actually, since we won't be able to see behind the quad anyways)
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        fboQuadShader.use();
-        glBindVertexArray(quadVAO);
-        
-        fboQuadShader.setVec3("skyColor", nightMode ? nightClear : sunClear);
-        fboQuadShader.setVec3("campos", camera.Position);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texColBuffer);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, texPosBuffer);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, texNorBuffer);
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, texMatBuffer);
-        //glUniform1i(glGetUniformLocation(fboQuadShader.ID, "screenTexture"),0);
-        
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D, textureDepthbuffer);
-        
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        app->setup_render();
+        app->render_to_texture();
+        app->render_to_screen();
 
     }
 

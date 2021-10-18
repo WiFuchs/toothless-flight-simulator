@@ -83,14 +83,14 @@ float Terrain::getHeight(int x, int z) {
     return heightMap[x][z];
 }
 
-void Terrain::Draw(Shader prog) const {
+void Terrain::Draw(Shader* prog) const {
     int h_pos = -1, h_nor = -1;
     
-    prog.setMat4("model", model);
+    prog->setMat4("model", model);
 
     CHECKED_GL_CALL(glBindVertexArray(vaoID));
-    h_pos = glGetAttribLocation(prog.ID, "vertPos");
-    h_nor = glGetAttribLocation(prog.ID, "vertNor");
+    h_pos = glGetAttribLocation(prog->ID, "vertPos");
+    h_nor = glGetAttribLocation(prog->ID, "vertNor");
     
     // Bind position buffer
     GLSL::enableVertexAttribArray(h_pos);

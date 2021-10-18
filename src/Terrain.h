@@ -18,7 +18,7 @@ struct TerrainVertex {
 class Terrain {
 public:
     Terrain(std::string const &path);
-    void Draw(Shader shader) const;
+    void Draw(Shader* shader) const;
     void init();
     float getHeight(int x, int z);
 private:
