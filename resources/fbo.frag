@@ -1,7 +1,8 @@
 #version 330 core
 in vec2 TexCoords;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 BloomColor;
 
 uniform sampler2D colTex;
 uniform sampler2D posTex;
@@ -56,5 +57,10 @@ void main()
 
     FragColor = vec4(col, 1.0);
 
-    
+    float intensity = (FragColor.r+FragColor.g+FragColor.b) / 3.0f;
+    BloomColor  = vec4(0,0,0,1);
+	if(intensity>0.95) 
+    {
+        BloomColor = vec4(FragColor.rgb,1);
+    }
 } 
