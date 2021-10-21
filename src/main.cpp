@@ -48,11 +48,12 @@ public:
     GLFWwindow* window = nullptr;
     Model* toothless = nullptr;
     GLuint fb_screen;
-    Shader* terrainShader, *modelShader, *fboQuadShader;
+    Shader* terrainShader, *modelShader, *lightingShader, *bloomShader, *screenShader, *prog_bloom_pass;
     Terrain *ground;
     glm::mat4 projection, view;
     float currentFrame;
-    GLuint texColBuffer, texPosBuffer, texNorBuffer, texMatBuffer, texDepthbuffer;
+    GLuint texColBuffer, texColBuffer2, texPosBuffer, texNorBuffer, texMatBuffer, texDepthbuffer;
+    GLuint FBO_bloom, FBO_bloom_pass[2], texFBO_bloom_pass[2], texFBO_bloom_rest;
     GLuint quadVAO, quadVBO;
     int framebufferHeight, framebufferWidth;
 
@@ -78,7 +79,9 @@ public:
         modelShader = new Shader("./resources/animate.vert", "./resources/animate.frag");
         terrainShader = new Shader("./resources/terrain.vert", "./resources/terrain.frag");
         //Shader stillModelShader("./resources/still.vert", "./resources/still.frag");
-        fboQuadShader = new Shader("./resources/fbo.vert", "./resources/fbo.frag");
+        lightingShader = new Shader("./resources/fbo.vert", "./resources/fbo.frag");
+        screenShader = new Shader("./resources/general.vert", "./resources/screen.frag");
+        prog_bloom_pass = new Shader("./resources/general.vert", "./resources/bloom_pass.frag");
 
         ground = new Terrain("./resources/terrain/testtopo.png");
 
@@ -109,18 +112,25 @@ public:
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
 
-        GLuint Tex1Location = glGetUniformLocation(fboQuadShader->ID, "colTex");//tex, tex2... sampler in the fragment shader
-        GLuint Tex2Location = glGetUniformLocation(fboQuadShader->ID, "posTex");
-        GLuint Tex3Location = glGetUniformLocation(fboQuadShader->ID, "norTex");
-        GLuint Tex4Location = glGetUniformLocation(fboQuadShader->ID, "matTex");
-        GLuint Tex5Location = glGetUniformLocation(fboQuadShader->ID, "depthTexture");
+        GLuint Tex1Location = glGetUniformLocation(lightingShader->ID, "colTex");//tex, tex2... sampler in the fragment shader
+        GLuint Tex2Location = glGetUniformLocation(lightingShader->ID, "posTex");
+        GLuint Tex3Location = glGetUniformLocation(lightingShader->ID, "norTex");
+        GLuint Tex4Location = glGetUniformLocation(lightingShader->ID, "matTex");
+        GLuint Tex5Location = glGetUniformLocation(lightingShader->ID, "depthTexture");
         // Then bind the uniform samplers to texture units:
-        glUseProgram(fboQuadShader->ID);
+        glUseProgram(lightingShader->ID);
         glUniform1i(Tex1Location, 0);
         glUniform1i(Tex2Location, 1);
         glUniform1i(Tex3Location, 2);
         glUniform1i(Tex4Location, 3);
         glUniform1i(Tex5Location, 4);
+
+        Tex1Location = glGetUniformLocation(lightingShader->ID, "colTex");//tex, tex2... sampler in the fragment shader
+        Tex2Location = glGetUniformLocation(lightingShader->ID, "bloomTex");
+        // Then bind the uniform samplers to texture units:
+        glUseProgram(screenShader->ID);
+        glUniform1i(Tex1Location, 0);
+        glUniform1i(Tex2Location, 1);
 
 
         // render to framebuffer for deferred shading
@@ -171,6 +181,67 @@ public:
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        generate_bloom_FBO();
+    }
+
+    void generate_bloom_FBO()
+    {
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        //RGBA8 2D texture, 24 bit depth texture, 256x256
+        glGenTextures(1, &texFBO_bloom_pass[0]);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+
+        glGenTextures(1, &texFBO_bloom_pass[1]);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[1]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glGenTextures(1, &texFBO_bloom_rest);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_rest);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        GLuint depth_rbloc;
+        //-------------------------
+        glGenFramebuffers(1, &FBO_bloom);
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO_bloom);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texFBO_bloom_rest, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, texFBO_bloom_pass[0], 0);
+        glGenRenderbuffers(1, &depth_rbloc);
+        glBindRenderbuffer(GL_RENDERBUFFER, depth_rbloc);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rbloc);
+
+        //-------------------------
+        for (int i = 0; i < 2; i++)
+        {
+            glGenFramebuffers(1, &FBO_bloom_pass[i]);
+            glBindFramebuffer(GL_FRAMEBUFFER, FBO_bloom_pass[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texFBO_bloom_pass[i], 0);
+            glGenRenderbuffers(1, &depth_rbloc);
+            glBindRenderbuffer(GL_RENDERBUFFER, depth_rbloc);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth_rbloc);
+        }
+
+
     }
 
     void setup_render()
@@ -231,20 +302,22 @@ public:
         toothless->Draw(modelShader, currentFrame);
     }
 
-    void render_to_screen()
+    void render_lighting()
     {
         glViewport(0, 0, framebufferWidth, framebufferHeight);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO_bloom);
         glDisable(GL_DEPTH_TEST); // disable depth test so screen-space quad isn't discarded due to depth test.
         // clear all relevant buffers
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // set clear color to white (not really necessery actually, since we won't be able to see behind the quad anyways)
         glClear(GL_COLOR_BUFFER_BIT);
+        GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+        glDrawBuffers(2, buffers);
 
-        fboQuadShader->use();
+        lightingShader->use();
         glBindVertexArray(quadVAO);
 
-        fboQuadShader->setVec3("skyColor", nightMode ? nightClear : sunClear);
-        fboQuadShader->setVec3("campos", camera.Position);
+        lightingShader->setVec3("skyColor", nightMode ? nightClear : sunClear);
+        lightingShader->setVec3("campos", camera.Position);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texColBuffer);
         glActiveTexture(GL_TEXTURE1);
@@ -258,6 +331,60 @@ public:
         glBindTexture(GL_TEXTURE_2D, texDepthbuffer);
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_rest);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[0]);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+
+    void render_to_screen()
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0.0, 1.0, 0.0, 1.0);
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        float aspect = width / (float)height;
+        glViewport(0, 0, width, height);
+        // Clear framebuffer.
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        screenShader->use();
+        glBindVertexArray(quadVAO);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_rest);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[0]);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+    void render_bloompass(int pass)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, FBO_bloom_pass[pass]);
+        GLenum buffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+        glDrawBuffers(1, buffers);
+        // Get current frame buffer size.
+
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        float aspect = width / (float)height;
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        prog_bloom_pass->use();
+        prog_bloom_pass->setInt("horizontal", pass);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[!pass]);
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glBindTexture(GL_TEXTURE_2D, texFBO_bloom_pass[pass]);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+
     }
 };
 
@@ -302,6 +429,11 @@ int main()
 
         app->setup_render();
         app->render_to_texture();
+        app->render_lighting();
+        app->render_bloompass(0);
+        app->render_bloompass(1);
+        app->render_bloompass(0);
+        app->render_bloompass(1);
         app->render_to_screen();
 
     }
